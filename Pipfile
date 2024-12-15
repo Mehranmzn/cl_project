@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pandas = "*"
+numpy = "*"
+matplotlib = "*"
+holidays = "*"
+lightgbm = "*"
+scikit-learn = "*"
+xgboost = "*"
+catboost = "*"
+python-dotenv = "*"
+snowflake-connector-python = "*"
+pyyaml = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"

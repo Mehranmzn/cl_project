@@ -1,0 +1,11 @@
+pandas
+numpy
+matplotlib
+holidays
+lightgbm
+scikit-learn
+xgboost
+catboost
+python-dotenv
+snowflake-connector-python
+pyyaml
