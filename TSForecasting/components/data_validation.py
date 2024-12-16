@@ -2,7 +2,7 @@ from TSForecasting.entity.artifact_entity import DataIngestionArtifact,DataValid
 from TSForecasting.entity.config_entity import DataValidationConfig
 from TSForecasting.exception.exception import TSForecastingException 
 from TSForecasting.logging.logger import logging 
-from TSForecasting.constant.training_testing_pipeline import SCHEMA_FILE_PATH
+from TSForecasting.constant.training_testing_pipeline import SCHEMA_FILE_PATH, DATA_DATE_COLUMN
 from TSForecasting.utils.main_utils.utils import FeatureEngineering
 from scipy.stats import ks_2samp
 import pandas as pd
@@ -55,10 +55,11 @@ class DataValidation:
         try:
             status=True
             report={}
-            for column in base_df.columns:
+            for column in base_df.select_dtypes(include=["number"]).columns:
+                
                 d1=base_df[column]
                 d2=current_df[column]
-                is_same_dist=ks_2samp(d1,d2)
+                is_same_dist=ks_2samp(d1.fillna(0),d2)
                 if threshold<=is_same_dist.pvalue:
                     is_found=False
                 else:

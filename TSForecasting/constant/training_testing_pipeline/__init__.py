@@ -38,6 +38,7 @@ DATA_INGESTION_TRAIN_TEST_SPLIT_RATION: float = 0.2
 DATA_LAG: int = 7
 DATA_WINDOW: int = 7
 DATA_GROUPING_COLUMN: str = "serieNames"
+DATA_DATE_COLUMN: str = "TSDate"
 
 """
 Data Split related constant start and end
