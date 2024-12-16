@@ -11,12 +11,12 @@ from TSForecasting.utils.ml_utils.metric.prediciton_metric import get_regression
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import (
-    AdaBoostClassifier,
-    GradientBoostingClassifier,
-    RandomForestClassifier,
+    AdaBoostRegressor,
+    GradientBoostingRegressor,
+    RandomForestRegressor,
 )
-import lightgbm as lgb
-import catboost as cb
+import catboost as CatBoostRegressor
+import lightgbm as LGBMRegressor
 
 import mlflow
 from urllib.parse import urlparse
@@ -33,7 +33,7 @@ class ModelTrainer:
             self.model_trainer_config=model_trainer_config
             self.data_transformation_artifact=data_transformation_artifact
         except Exception as e:
-            raise TransactionMonitoringException(e,sys)
+            raise TSForecastingException(e,sys)
         
     def track_mlflow(self,best_model,classificationmetric):
         mlflow.set_registry_uri("https://dagshub.com/mehran1414/tm_data.mlflow")
@@ -64,39 +64,54 @@ class ModelTrainer:
         
     def train_model(self,X_train,y_train,x_test,y_test):
         models = {
-                "Random Forest": RandomForestClassifier(verbose=1),
-                "Decision Tree": DecisionTreeClassifier(),
-                "Gradient Boosting": GradientBoostingClassifier(verbose=1),
-                "Logistic Regression": LogisticRegression(verbose=1),
-                "AdaBoost": AdaBoostClassifier(),
+                "Random Forest": RandomForestRegressor(verbose=1),
+                "Gradient Boosting": GradientBoostingRegressor(verbose=1),
+                "AdaBoost": AdaBoostRegressor(),
+                "CatBoost": CatBoostRegressor(),
+                "Lightgbm Regression": LGBMRegressor(),
+
             }
-        params={
-            "Decision Tree": {
-                'criterion':['gini', 'entropy', 'log_loss'],
-                # 'splitter':['best','random'],
-                # 'max_features':['sqrt','log2'],
-            },
-            "Random Forest":{
-                # 'criterion':['gini', 'entropy', 'log_loss'],
-                
-                # 'max_features':['sqrt','log2',None],
-                'n_estimators': [8,16,32,128,256]
-            },
-            "Gradient Boosting":{
-                # 'loss':['log_loss', 'exponential'],
-                'learning_rate':[.1,.01,.05,.001],
-                'subsample':[0.6,0.7,0.75,0.85,0.9],
-                # 'criterion':['squared_error', 'friedman_mse'],
-                # 'max_features':['auto','sqrt','log2'],
-                'n_estimators': [8,16,32,64,128,256]
-            },
-            "Logistic Regression":{},
-            "AdaBoost":{
-                'learning_rate':[.1,.01,.001],
-                'n_estimators': [8,16,32,64,128,256]
-            }
-            
-        }
+        params = {
+               
+                "Random Forest": {
+                    'n_estimators': [50, 100],  # Fewer trees for faster execution
+                    'max_depth': [5, 10],  # Balanced complexity
+                    'min_samples_split': [2, 5],
+                    'min_samples_leaf': [1, 2],
+                    'max_features': ['sqrt', None],  # Subset of features per split
+                },
+                "Gradient Boosting": {
+                    'n_estimators': [50, 100],  # Moderate number of estimators for speed
+                    'learning_rate': [0.05, 0.1],  # Balanced learning rates
+                    'max_depth': [3, 5],  # Shallow trees to avoid overfitting
+                    'subsample': [0.7, 0.9],  # Introduce randomness to improve generalization
+                    'min_samples_split': [5, 10],
+                    'min_samples_leaf': [2, 5],
+                },
+                "AdaBoost": {
+                    'n_estimators': [50, 100],  # Iterations for local execution
+                    'learning_rate': [0.05, 0.1],  # Slow learning rates for stability
+                    'loss': ['linear', 'square'],  # Regression-specific loss functions
+                },
+                "CatBoost": {
+                    'iterations': [100, 200],  # Moderate iterations for efficiency
+                    'learning_rate': [0.05, 0.1],  # Balanced learning rates
+                    'depth': [3, 5],  # Control depth for generalization
+                    'l2_leaf_reg': [3, 5, 10],  # L2 regularization to prevent overfitting
+                },
+                "Lightgbm Regression": {
+                    'n_estimators': [50, 100, 200],  # Number of boosting rounds
+                    'learning_rate': [0.01, 0.05, 0.1],  # Step size for learning
+                    'max_depth': [-1, 5, 10],  # Depth of the tree (-1 for unlimited)
+                    'num_leaves': [15, 31, 63],  # Number of leaves in each tree
+                    'min_child_samples': [10, 20, 30],  # Minimum data in a leaf node
+                    'min_child_weight': [1e-3, 1e-2, 1e-1],  # Minimum sum of instance weights in a leaf
+                    'colsample_bytree': [0.7, 0.9, 1.0],  # Fraction of features to consider per tree
+                    'reg_alpha': [0.0, 0.1, 0.5],  # L1 regularization term
+                    'reg_lambda': [0.0, 0.1, 0.5],  # L2 regularization term
+                },
+}
+
         model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_test,y_test=y_test,
                                           models=models,param=params)
         
@@ -111,14 +126,14 @@ class ModelTrainer:
         best_model = models[best_model_name]
         y_train_pred=best_model.predict(X_train)
 
-        classification_train_metric=get_classification_score(y_true=y_train,y_pred=y_train_pred)
+        classification_train_metric=get_regression_score(y_true=y_train,y_pred=y_train_pred)
         
         ## Track the experiements with mlflow
         self.track_mlflow(best_model,classification_train_metric)
 
 
         y_test_pred=best_model.predict(x_test)
-        classification_test_metric=get_classification_score(y_true=y_test,y_pred=y_test_pred)
+        classification_test_metric=get_regression_score(y_true=y_test,y_pred=y_test_pred)
 
         self.track_mlflow(best_model,classification_test_metric)
 
@@ -127,8 +142,8 @@ class ModelTrainer:
         model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
         os.makedirs(model_dir_path,exist_ok=True)
 
-        TM_Model=TransactionMonitoring(preprocessor=preprocessor,model=best_model)
-        save_object(self.model_trainer_config.trained_model_file_path,obj=TransactionMonitoring)
+        TM_Model=TSForecastingException(preprocessor=preprocessor,model=best_model)
+        save_object(self.model_trainer_config.trained_model_file_path,obj=TSForecastingException)
         #model pusher
         save_object("final_model/model.pkl",best_model)
         
@@ -164,4 +179,4 @@ class ModelTrainer:
 
             
         except Exception as e:
-            raise TransactionMonitoringException(e,sys)
+            raise TSForecastingException(e,sys)

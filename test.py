@@ -5,6 +5,27 @@ from datetime import timedelta
 
 # # Load your data
 df = pd.read_csv("TSdata/training.csv")
+# Filter rows where series_1 == 0
+series_1_data = df[(df['serieNames'] == 'serie_1') & (df['sales'] == 0)]
+total_series_1_zero = len(series_1_data)
+
+# Filter data where serieName is 'series_2' and value is 5, but only from series_1 == 0 rows
+series_2_data = df[(df['serieNames'] == 'serie_2') & (df['sales'] == 5)]
+
+matched_dates = series_1_data['TSDate']
+series_2_with_series_1_zero = series_2_data[series_2_data['TSDate'].isin(matched_dates)].shape[0]
+
+# Total occurrences of series_1 == 0
+total_series_1_zero = series_1_data.shape[0]
+
+# Calculate percentage
+percentage = (series_2_with_series_1_zero / total_series_1_zero) * 100 if total_series_1_zero > 0 else 0
+
+# Print results
+print(f"Total occurrences of series_1 == 0: {total_series_1_zero}")
+print(f"Occurrences of series_2 == 5 matching TSDate of series_1 == 0: {series_2_with_series_1_zero}")
+print(f"Percentage of series_2 == 5 within series_1 == 0 (matched by TSDate): {percentage:.2f}%")
+
 df2 = pd.read_csv("TSdata/test.csv")
 # Ensure the date column is in datetime format
 df["TSDate"] = pd.to_datetime(df["TSDate"])

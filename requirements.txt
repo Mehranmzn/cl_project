@@ -9,3 +9,5 @@ catboost
 python-dotenv
 snowflake-connector-python
 pyyaml
+dagshub
+mlflow

@@ -5,7 +5,7 @@ from TSForecasting.exception.exception import TSForecastingException
 from TSForecasting.logging.logger import logging
 from TSForecasting.entity.config_entity import DataIngestionConfig, TrainingPipelineConfig, DataValidationConfig
 from TSForecasting.entity.config_entity import DataTransformationConfig, ModelTrainerConfig
-#from TSForecasting.components.model_trainer import ModelTrainer
+from TSForecasting.components.model_trainer import ModelTrainer
 
 if __name__=='__main__':
     try:
@@ -31,11 +31,11 @@ if __name__=='__main__':
         print(data_transformation_artifact)
         logging.info("Data transformation completed")
 
-        # logging.info("Initiating model training")
-        # model_trainer_config = ModelTrainerConfig(trainingpuipeline_config)
-        # model_trainer = ModelTrainer(model_trainer_config = model_trainer_config, data_transformation_artifact = data_transformation_artifact)
-        # model_trainer_artifact = model_trainer.initiate_model_trainer()
-        # logging.info("Model training completed")
+        logging.info("Initiating model training")
+        model_trainer_config = ModelTrainerConfig(trainingpuipeline_config)
+        model_trainer = ModelTrainer(model_trainer_config = model_trainer_config, data_transformation_artifact = data_transformation_artifact)
+        model_trainer_artifact = model_trainer.initiate_model_trainer()
+        logging.info("Model training completed")
 
 
     except TSForecastingException as e:
