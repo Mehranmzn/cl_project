@@ -33,5 +33,4 @@ class RegressionMetricArtifact:
 class ModelTrainerArtifact:
     trained_model_file_path: str
     train_metric_artifact: RegressionMetricArtifact
-    test_metric_artifact: RegressionMetricArtifact
     val_metric_artifact: RegressionMetricArtifact

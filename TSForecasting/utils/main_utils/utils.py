@@ -9,6 +9,8 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GridSearchCV
 from datetime import timedelta
 from TSForecasting.constant.training_testing_pipeline import DATA_LAG, DATA_WINDOW, TARGET_COLUMN, DATA_GROUPING_COLUMN
+from lightgbm import LGBMRegressor
+import lightgbm as lgb
 
 
 def read_yaml_file(file_path: str) -> dict:
@@ -71,43 +73,82 @@ def load_numpy_array_data(file_path: str) -> np.array:
     """
     try:
         with open(file_path, "rb") as file_obj:
-            return np.load(file_obj)
+            return np.load(file_obj,  allow_pickle=True)
     except Exception as e:
         raise TSForecastingException(e, sys) from e
     
 
 
-def evaluate_models(X_train, y_train,X_test,y_test,models,param):
+def evaluate_models(X_train, y_train, X_test, y_test, models, param):
     try:
         report = {}
 
         for i in range(len(list(models))):
+            model_name = list(models.keys())[i]
             model = list(models.values())[i]
-            para=param[list(models.keys())[i]]
+            params = param[model_name]
 
-            gs = GridSearchCV(model,para,cv=3)
-            gs.fit(X_train,y_train)
+            if model_name == "LightGBM":
+                params = {
+                    'learning_rate': [0.01, 0.05, 0.1],
+                    'n_estimators': [50, 100],
+                    'num_leaves': [31, 50],
+                    'feature_fraction': [0.8, 0.9],
+                    'bagging_fraction': [0.8, 1.0],
+                    
+                }
+                # Special handling for LightGBM with CV
+                lgbm_cv_model = LGBMRegressor(objective="regression", boosting_type="gbdt", metric="rmse")
 
-            model.set_params(**gs.best_params_)
-            model.fit(X_train,y_train)
+                # Use GridSearchCV to find the best parameters
+                grid_search = GridSearchCV(estimator=lgbm_cv_model, param_grid=params, cv=3, scoring="neg_mean_squared_error")
+                grid_search.fit(X_train, y_train)
 
-            #model.fit(X_train, y_train)  # Train model
+                # Get the best parameters
+                best_params = grid_search.best_params_
+                print(f"Best parameters for LightGBM: {best_params}")
 
-            y_train_pred = model.predict(X_train)
+                # Train the final LightGBM model using the best parameters
+                final_model = LGBMRegressor(
+                    objective="regression",
+                    boosting_type="gbdt",
+                    metric="rmse",
+                    **best_params
+                )
+                final_model.fit(X_train, y_train)
 
-            y_test_pred = model.predict(X_test)
+                # Predictions
+                y_train_pred = final_model.predict(X_train)
+                y_test_pred = final_model.predict(X_test)
 
-            train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
 
-            test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
+                # Calculate RMSE
+                train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
+                test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
 
-            report[list(models.keys())[i]] = test_model_score
+                report[model_name] = test_model_score
+                save_object("final_model/lightgbm.pkl",final_model)
+            else:
+                # General model handling
+                gs = GridSearchCV(model, params, cv=3)
+                gs.fit(X_train, y_train)
+
+                model.set_params(**gs.best_params_)
+                model.fit(X_train, y_train)
+
+                y_train_pred = model.predict(X_train)
+                y_test_pred = model.predict(X_test)
+
+                train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
+                test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
+
+                report[model_name] = test_model_score
 
         return report
 
     except Exception as e:
-        raise TSForecastingException(e, sys)
-    
+        raise Exception(f"An error occurred: {str(e)}")
+
 
 
 class FeatureEngineering:
@@ -182,6 +223,15 @@ class FeatureEngineering:
             lambda x: x.rolling(window=window).max())
         self.dataframe["rolling_std"] = self.dataframe.groupby(group_column)[target_column].transform(
             lambda x: x.rolling(window=window).std())
+        
+    def add_flag_column(self, sales_column: str):
+        """
+        Add a FLAG column where:
+        - FLAG = 1 if the sales column contains 0 or 5.
+        - FLAG = 0 otherwise.
+        """
+        self.dataframe["FLAG"] = self.dataframe[sales_column].apply(lambda x: 1 if x in [0, 5] else 0)
+    
 
     def generate_features(self, date_column: str, group_column: str, target_column: str = TARGET_COLUMN):
         self.ensure_datetime(date_column)
@@ -190,6 +240,7 @@ class FeatureEngineering:
         self.add_season_feature()
         self.add_lag_features(group_column, target_column)
         self.add_rolling_features(group_column, target_column)
+        self.add_flag_column(target_column)
 
     def get_dataframe(self):
         return self.dataframe

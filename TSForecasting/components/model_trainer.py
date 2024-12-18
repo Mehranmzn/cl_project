@@ -1,5 +1,7 @@
 import os
 import sys
+import pandas as pd
+from datetime import datetime, timedelta
 from TSForecasting.exception.exception import TSForecastingException 
 from TSForecasting.logging.logger import logging
 from TSForecasting.entity.artifact_entity import DataTransformationArtifact,ModelTrainerArtifact
@@ -8,21 +10,21 @@ from TSForecasting.utils.ml_utils.model.estimator import TSForecastingEstimator
 from TSForecasting.utils.main_utils.utils import save_object,load_object
 from TSForecasting.utils.main_utils.utils import load_numpy_array_data,evaluate_models
 from TSForecasting.utils.ml_utils.metric.prediciton_metric import get_regression_score
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import (
     AdaBoostRegressor,
     GradientBoostingRegressor,
     RandomForestRegressor,
 )
-import catboost as CatBoostRegressor
 import lightgbm as LGBMRegressor
+import catboost as cb
+
 
 import mlflow
 from urllib.parse import urlparse
 
 import dagshub
 dagshub.init(repo_owner='mehran1414', repo_name='cl_project', mlflow=True)
+
 
 
 
@@ -35,41 +37,57 @@ class ModelTrainer:
         except Exception as e:
             raise TSForecastingException(e,sys)
         
-    def track_mlflow(self,best_model,classificationmetric):
-        mlflow.set_registry_uri("https://dagshub.com/mehran1414/tm_data.mlflow")
-        tracking_url_type_store = urlparse(mlflow.get_tracking_uri()).scheme
-        with mlflow.start_run():
-            f1_score=classificationmetric.f1_score
-            precision_score=classificationmetric.precision_score
-            recall_score=classificationmetric.recall_score
+    def track_mlflow(self, best_model, model_name, regressionmetric, X_train, y_true, y_pred, run_type):
+        try:
+            mlflow.set_registry_uri("https://dagshub.com/mehran1414/cl_project.mlflow")
+            tracking_url_type_store = urlparse(mlflow.get_tracking_uri()).scheme
 
-            
+            with mlflow.start_run():
+                # Log model metrics
+                mlflow.log_metric("rmse", regressionmetric.rmse)
 
-            mlflow.log_metric("f1_score",f1_score)
-            mlflow.log_metric("precision",precision_score)
-            mlflow.log_metric("recall_score",recall_score)
-            mlflow.sklearn.log_model(best_model,"model")
-            # Model registry does not work with file store
-            if tracking_url_type_store != "file":
+                # Log additional parameters or tags for clarity
+                mlflow.log_param("model_name", model_name)
+                mlflow.log_param("run_type", run_type)  # "training" or "validation"
+                mlflow.log_param("num_samples", len(X_train))
+                mlflow.set_tag("version", "9")
+                mlflow.set_tag("data_split", run_type)  # Distinguish training vs validation
 
-                # Register the model
-                # There are other ways to use the Model Registry, which depends on the use case,
-                # please refer to the doc for more information:
-                # https://mlflow.org/docs/latest/model-registry.html#api-workflow
-                mlflow.sklearn.log_model(best_model, "model", registered_model_name=best_model)
-            else:
-                mlflow.sklearn.log_model(best_model, "model")
+                # Log example input for signature
+                input_example = X_train[0].reshape(1, -1)
+                mlflow.sklearn.log_model(
+                    best_model, 
+                    model_name, 
+                    input_example=input_example
+                )
+
+                # Register the model if not using a file store
+                if tracking_url_type_store != "file":
+                    mlflow.sklearn.log_model(
+                        best_model, 
+                        model_name, 
+                        registered_model_name="best_model_name"
+                    )
+
+                # Log predictions as an artifact (optional but useful)
+                predictions_df = pd.DataFrame({"y_true": y_true, "y_pred": y_pred})
+                predictions_csv = "/tmp/predictions.csv"  # Temporary local path
+                predictions_df.to_csv(predictions_csv, index=False)
+                mlflow.log_artifact(predictions_csv, artifact_path=f"predictions/{run_type}")
+
+
+        except Exception as e:
+            raise Exception(f"Error in MLflow tracking: {e}")
+
 
 
         
-    def train_model(self,X_train,y_train,x_test,y_test):
+    def train_model(self,X_train,y_train, x_val, y_val, x_test,y_test):
         models = {
                 "Random Forest": RandomForestRegressor(verbose=1),
                 "Gradient Boosting": GradientBoostingRegressor(verbose=1),
                 "AdaBoost": AdaBoostRegressor(),
-                "CatBoost": CatBoostRegressor(),
-                "Lightgbm Regression": LGBMRegressor(),
-
+                "LightGBM": LGBMRegressor
             }
         params = {
                
@@ -89,30 +107,22 @@ class ModelTrainer:
                     'min_samples_leaf': [2, 5],
                 },
                 "AdaBoost": {
-                    'n_estimators': [50, 100],  # Iterations for local execution
-                    'learning_rate': [0.05, 0.1],  # Slow learning rates for stability
-                    'loss': ['linear', 'square'],  # Regression-specific loss functions
+                    'n_estimators': [50, 100],
+                    'learning_rate': [0.05, 0.1],
+                    'loss': ['linear', 'square', 'exponential'],  # Loss functions for regression
                 },
-                "CatBoost": {
-                    'iterations': [100, 200],  # Moderate iterations for efficiency
-                    'learning_rate': [0.05, 0.1],  # Balanced learning rates
-                    'depth': [3, 5],  # Control depth for generalization
-                    'l2_leaf_reg': [3, 5, 10],  # L2 regularization to prevent overfitting
-                },
-                "Lightgbm Regression": {
-                    'n_estimators': [50, 100, 200],  # Number of boosting rounds
-                    'learning_rate': [0.01, 0.05, 0.1],  # Step size for learning
-                    'max_depth': [-1, 5, 10],  # Depth of the tree (-1 for unlimited)
-                    'num_leaves': [15, 31, 63],  # Number of leaves in each tree
-                    'min_child_samples': [10, 20, 30],  # Minimum data in a leaf node
-                    'min_child_weight': [1e-3, 1e-2, 1e-1],  # Minimum sum of instance weights in a leaf
-                    'colsample_bytree': [0.7, 0.9, 1.0],  # Fraction of features to consider per tree
-                    'reg_alpha': [0.0, 0.1, 0.5],  # L1 regularization term
-                    'reg_lambda': [0.0, 0.1, 0.5],  # L2 regularization term
-                },
-}
+                "LightGBM":  
+                    {
+                        'learning_rate': [0.01, 0.05, 0.1],
+                        'n_estimators': [50, 100],
+                        'num_leaves': [31, 50],
+                        'feature_fraction': [0.8, 0.9],
+                        'bagging_fraction': [0.8, 1.0]
+                    }
+                
+        }
 
-        model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_test,y_test=y_test,
+        model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_val,y_test=y_val,
                                           models=models,param=params)
         
         ## To get best model score from dict
@@ -123,58 +133,129 @@ class ModelTrainer:
         best_model_name = list(model_report.keys())[
             list(model_report.values()).index(best_model_score)
         ]
-        best_model = models[best_model_name]
-        y_train_pred=best_model.predict(X_train)
 
-        classification_train_metric=get_regression_score(y_true=y_train,y_pred=y_train_pred)
+
+        best_model = models[best_model_name]
+
+        if best_model_name == "LightGBM":
+            best_model = load_object("final_model/lightgbm.pkl")
+            y_train_pred=best_model.predict(X_train)
+            save_object("final_model/model.pkl",best_model)
+
+
+        else:
+
+            y_train_pred=best_model.predict(X_train)
+
+        regression_train_metric=get_regression_score(y_true=y_train,y_pred=y_train_pred)
         
         ## Track the experiements with mlflow
-        self.track_mlflow(best_model,classification_train_metric)
+        self.track_mlflow(best_model, best_model_name, regression_train_metric, X_train, y_train, y_train_pred, run_type="training")
 
 
-        y_test_pred=best_model.predict(x_test)
-        classification_test_metric=get_regression_score(y_true=y_test,y_pred=y_test_pred)
+        y_val_pred=best_model.predict(x_val)
+        regression_val_metric=get_regression_score(y_true=y_val,y_pred=y_val_pred)
 
-        self.track_mlflow(best_model,classification_test_metric)
+        self.track_mlflow(best_model, best_model_name, regression_val_metric, x_val, y_val, y_val_pred, run_type="validation")
 
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
             
         model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
         os.makedirs(model_dir_path,exist_ok=True)
 
-        TM_Model=TSForecastingException(preprocessor=preprocessor,model=best_model)
-        save_object(self.model_trainer_config.trained_model_file_path,obj=TSForecastingException)
+        TM_Model=TSForecastingEstimator(preprocessor=preprocessor,model=best_model)
+        save_object(self.model_trainer_config.trained_model_file_path,obj=TM_Model)
         #model pusher
         save_object("final_model/model.pkl",best_model)
         
 
         ## Model Trainer Artifact
         model_trainer_artifact=ModelTrainerArtifact(trained_model_file_path=self.model_trainer_config.trained_model_file_path,
-                             train_metric_artifact=classification_train_metric,
-                             test_metric_artifact=classification_test_metric
+                             train_metric_artifact=regression_train_metric,
+                             val_metric_artifact=regression_val_metric
                              )
         logging.info(f"Model trainer artifact: {model_trainer_artifact}")
         return model_trainer_artifact
 
+    def prepare_the_test_csv_file(self, x_test, y_test):
+        try:
+            # Load the pre-trained model
+            chosen_model = load_object("final_model/model.pkl")
+            
+        
+            # Recursive prediction
+            y_test_pred = []  # Store predictions
+            x_test_recursive = x_test.copy()  # Create a copy to update inputs
 
+            for i in range(len(y_test)):
+                # Predict for the current step
+                pred = chosen_model.predict(x_test_recursive[i].reshape(1, -1))[0]
+                y_test_pred.append(pred)
+                
+                # Update lag features in x_test_recursive with the current prediction
+                if i + 1 < len(x_test_recursive):  # Avoid out-of-bound errors
+                    # Shift lag features to include the new prediction
+                    x_test_recursive[i + 1, -1] = pred  # Update the last lag feature
+
+
+            dates = []
+            base_date = datetime(2015, 11, 16)
+            for i in range(len(y_test_pred) // 2):
+                dates.extend([base_date + timedelta(days=i)] * 2)
+
+            # Ensure we have enough dates for all predictions
+            if len(dates) < len(y_test_pred):
+                remaining = len(y_test_pred) - len(dates)
+                last_date = dates[-1] if dates else base_date
+                dates.extend([last_date + timedelta(days=1)] * remaining)
+
+            # Prepare DataFrame
+            df = pd.DataFrame({
+                'date': dates,
+                'x': list(x_test_recursive),
+                'y': y_test,
+                'y_pred': y_test_pred
+            })
+
+            # Save the DataFrame to a CSV file
+            df.to_csv("testoutput/testoutput.csv", index=False)
+            
+            print(f"TEST PREDICTIONS CSV file saved ")
+        
+        except Exception as e:
+            raise Exception(f"Error in preparing the test CSV file: {e}")
+                
         
     def initiate_model_trainer(self)->ModelTrainerArtifact:
         try:
             train_file_path = self.data_transformation_artifact.transformed_train_file_path
             test_file_path = self.data_transformation_artifact.transformed_test_file_path
+            val_file_path = self.data_transformation_artifact.transformed_val_file_path
 
             #loading training array and testing array
             train_arr = load_numpy_array_data(train_file_path)
             test_arr = load_numpy_array_data(test_file_path)
+            val_arr = load_numpy_array_data(val_file_path)
 
-            x_train, y_train, x_test, y_test = (
-                train_arr[:, :-1],
+            x_train, y_train, x_val, y_val, x_test, y_test = (
+                train_arr[:, 1:-1],
                 train_arr[:, -1],
-                test_arr[:, :-1],
+                val_arr[:, 1:-1],
+                val_arr[:, -1],
+                test_arr[:, 1:-1],
                 test_arr[:, -1],
             )
 
-            model_trainer_artifact=self.train_model(x_train,y_train,x_test,y_test)
+
+            try:
+                model_trainer_artifact = self.train_model(x_train, y_train, x_val, y_val, x_test, y_test)
+                print("train_model executed successfully")
+                print("Now we go to save the test file preds")
+                self.prepare_the_test_csv_file(x_test, y_test)
+                print("Test file preds saved successfully")
+            except Exception as e:
+                print(f"Exception in train_model: {e}")
+                raise
             return model_trainer_artifact
 
             

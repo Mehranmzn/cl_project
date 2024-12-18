@@ -5,9 +5,12 @@ holidays
 lightgbm
 scikit-learn
 xgboost
-catboost
 python-dotenv
 snowflake-connector-python
 pyyaml
 dagshub
 mlflow
+fastapi
+uvicorn
+sktime
+statsmodels

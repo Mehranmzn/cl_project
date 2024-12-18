@@ -17,6 +17,10 @@ snowflake-connector-python = "*"
 pyyaml = "*"
 dagshub = "*"
 mlflow = "*"
+fastapi = "*"
+uvicorn = "*"
+sktime = "*"
+statsmodels = "*"
 
 [dev-packages]
 

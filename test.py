@@ -6,25 +6,6 @@ from datetime import timedelta
 # # Load your data
 df = pd.read_csv("TSdata/training.csv")
 # Filter rows where series_1 == 0
-series_1_data = df[(df['serieNames'] == 'serie_1') & (df['sales'] == 0)]
-total_series_1_zero = len(series_1_data)
-
-# Filter data where serieName is 'series_2' and value is 5, but only from series_1 == 0 rows
-series_2_data = df[(df['serieNames'] == 'serie_2') & (df['sales'] == 5)]
-
-matched_dates = series_1_data['TSDate']
-series_2_with_series_1_zero = series_2_data[series_2_data['TSDate'].isin(matched_dates)].shape[0]
-
-# Total occurrences of series_1 == 0
-total_series_1_zero = series_1_data.shape[0]
-
-# Calculate percentage
-percentage = (series_2_with_series_1_zero / total_series_1_zero) * 100 if total_series_1_zero > 0 else 0
-
-# Print results
-print(f"Total occurrences of series_1 == 0: {total_series_1_zero}")
-print(f"Occurrences of series_2 == 5 matching TSDate of series_1 == 0: {series_2_with_series_1_zero}")
-print(f"Percentage of series_2 == 5 within series_1 == 0 (matched by TSDate): {percentage:.2f}%")
 
 df2 = pd.read_csv("TSdata/test.csv")
 # Ensure the date column is in datetime format
@@ -37,7 +18,7 @@ df = pd.concat([df, df2]).reset_index(drop=True)
 df["year"] = df["TSDate"].dt.year
 df["month"] = df["TSDate"].dt.month
 df["day"] = df["TSDate"].dt.day
-df["weekday"] = df["TSDate"].dt.day_name()
+#df["weekday"] = df["TSDate"].dt.day_name()
 df["weekday_num"] = df["TSDate"].dt.weekday  # Monday=0, Sunday=6
 df["week_number"] = df["TSDate"].dt.isocalendar().week
 df["is_weekend"] = df["weekday_num"] >= 5
@@ -148,23 +129,24 @@ df["rolling_min"] = df.groupby("serieNames")["sales"].transform(lambda x: x.roll
 df["rolling_max"] = df.groupby("serieNames")["sales"].transform(lambda x: x.rolling(window=7).max())
 df["rolling_std"] = df.groupby("serieNames")["sales"].transform(lambda x: x.rolling(window=7).std())
 
-df.drop(columns=["weekday"], inplace=True)
+#df.drop(columns=["weekday"], inplace=True)
 boolean_columns = df.select_dtypes(include="bool").columns
 df[boolean_columns] = df[boolean_columns].astype(int)
+print(df.columns)
 # Save to CSV
 df.to_csv("ts_features_dutch_calendar_dataset.csv", index=False)
 
 # Display some plots
-# 1. Sales over time
-# plt.figure(figsize=(10, 6))
-# plt.plot(df["TSDate"], df["sales"], label="Sales")
-# plt.title("Sales Over Time")
-# plt.xlabel("Date")
-# plt.ylabel("Sales")
-# plt.legend()
-# plt.show()
+#1. Sales over time
+plt.figure(figsize=(10, 6))
+plt.plot(df["TSDate"], df["sales"], label="Sales")
+plt.title("Sales Over Time")
+plt.xlabel("Date")
+plt.ylabel("Sales")
+plt.legend()
+plt.show()
 
-# # 2. Average sales by weekday
+# 2. Average sales by weekday
 # weekday_sales = df.groupby("weekday")["sales"].mean().reindex(
 #     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 # )
@@ -175,50 +157,50 @@ df.to_csv("ts_features_dutch_calendar_dataset.csv", index=False)
 # plt.ylabel("Average Sales")
 # plt.show()
 
-# # 3. Sales distribution by custom Dutch events
-# event_sales = df.groupby("dutch_event")["sales"].mean()
-# plt.figure(figsize=(10, 6))
-# event_sales.plot(kind="bar")
-# plt.title("Average Sales by Dutch Calendar Events")
-# plt.xlabel("Dutch Event")
-# plt.ylabel("Average Sales")
-# plt.xticks(rotation=45)
-# plt.show()
+# 3. Sales distribution by custom Dutch events
+event_sales = df.groupby("dutch_event")["sales"].mean()
+plt.figure(figsize=(10, 6))
+event_sales.plot(kind="bar")
+plt.title("Average Sales by Dutch Calendar Events")
+plt.xlabel("Dutch Event")
+plt.ylabel("Average Sales")
+plt.xticks(rotation=45)
+plt.show()
 
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 
 # Filter rows with zero sales
-# zero_sales = df[df["sales"] ==  0.0]
+zero_sales = df[df["sales"] ==  0.0]
 
 # print(zero_sales.head())   
 
 # # Count occurrences of zero sales by date
-# zero_sales_by_date = zero_sales.groupby("TSDate").size()
+zero_sales_by_date = zero_sales.groupby("TSDate").size()
 
 # #Plot zero sales by date
-# plt.figure(figsize=(10, 6))
-# plt.scatter(zero_sales_by_date.index, zero_sales_by_date.values, color='red', label="Zero Sales")
-# plt.title("Zero Sales Over Time")
-# plt.xlabel("Date")
-# plt.ylabel("Number of Zero Sales")
-# plt.legend()
-# plt.show()
+plt.figure(figsize=(10, 6))
+plt.scatter(zero_sales_by_date.index, zero_sales_by_date.values, color='red', label="Zero Sales")
+plt.title("Zero Sales Over Time")
+plt.xlabel("Date")
+plt.ylabel("Number of Zero Sales")
+plt.legend()
+plt.show()
 
 # # Count occurrences of zero sales by weekday
-# zero_sales_by_weekday = zero_sales.groupby("weekday").size().reindex(
-#     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-# )
+zero_sales_by_weekday = zero_sales.groupby("weekday").size().reindex(
+    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+)
 
-# # Plot zero sales by weekday
-# plt.figure(figsize=(8, 5))
-# zero_sales_by_weekday.plot(kind="bar", color='orange')
-# plt.title("Zero Sales by Weekday")
-# plt.xlabel("Weekday")
-# plt.ylabel("Number of Zero Sales")
-# plt.show()
+# Plot zero sales by weekday
+plt.figure(figsize=(8, 5))
+zero_sales_by_weekday.plot(kind="bar", color='orange')
+plt.title("Zero Sales by Weekday")
+plt.xlabel("Weekday")
+plt.ylabel("Number of Zero Sales")
+plt.show()
 
-# # Optional: Print dates with zero sales for inspection
-# print("Dates with Zero Sales:")
-# print(zero_sales["TSDate"].unique())
+# Optional: Print dates with zero sales for inspection
+print("Dates with Zero Sales:")
+print(zero_sales["TSDate"].unique())
