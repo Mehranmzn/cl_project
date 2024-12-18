@@ -134,10 +134,10 @@ class DataTransformation:
             logging.info("Data transformation completed successfully.")
 
 
-            #extra step for less than ziro values
-            train_df.loc[train_df[TARGET_COLUMN] <= 10, TARGET_COLUMN] = np.nan
+            # #extra step for less than ziro values
+            # train_df.loc[train_df[TARGET_COLUMN] <= 10, TARGET_COLUMN] = np.nan
 
-            train_df[TARGET_COLUMN] = train_df[TARGET_COLUMN].fillna(method='ffill').fillna(method='bfill')
+            # train_df[TARGET_COLUMN] = train_df[TARGET_COLUMN].fillna(method='ffill').fillna(method='bfill')
 
 
 
