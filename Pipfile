@@ -23,6 +23,8 @@ sktime = "*"
 statsmodels = "*"
 python-multipart = "*"
 nbconvert = "*"
+jupyter-contrib-nbextensions = "*"
+setuptools = "*"
 
 [dev-packages]
 notebook = "*"
