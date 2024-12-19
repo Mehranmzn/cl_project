@@ -21,6 +21,7 @@ fastapi = "*"
 uvicorn = "*"
 sktime = "*"
 statsmodels = "*"
+python-multipart = "*"
 
 [dev-packages]
 

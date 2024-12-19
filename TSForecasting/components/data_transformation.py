@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import KNNImputer
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from TSForecasting.constant.training_testing_pipeline import TARGET_COLUMN, SCHEMA_FILE_PATH, DATA_DATE_COLUMN
 from TSForecasting.constant.training_testing_pipeline import DATA_TRANSFORMATION_IMPUTER_PARAMS
@@ -77,18 +77,22 @@ class DataTransformation:
             # Combine the transformations using ColumnTransformer
             # Define transformers for numerical and categorical data
             numerical_transformer = Pipeline(steps=[
-                ('imputer', imputer)
+                ('imputer', imputer),
+                #('scaler', StandardScaler())  # Scale numerical columns
+
             ])
 
-            categorical_transformer = Pipeline(steps=[
-                ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-            ])
+            # categorical_transformer = Pipeline(steps=[
+            #     ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+            # ])
+
+
 
             # Combine the transformations using ColumnTransformer
             preprocessor = ColumnTransformer(
                 transformers=[
                     ("num", numerical_transformer, numerical_columns),  # Apply KNNImputer to numeric columns
-                    ("cat", categorical_transformer, categorical_columns),  # Apply OneHotEncoder to categorical columns
+                    #("cat", categorical_transformer, categorical_columns),  # Apply OneHotEncoder to categorical columns
                 ],
                 remainder="passthrough"  # Keep other columns as they are
             )
@@ -134,19 +138,22 @@ class DataTransformation:
             logging.info("Data transformation completed successfully.")
 
 
+            # Combine unique values from all datasets
+            all_categories = pd.concat([
+                train_df['serieNames'],
+                test_df['serieNames'],
+                val_df['serieNames']
+            ]).unique()
+
+            # Set consistent categories
+            train_df['serieNames'] = pd.Categorical(train_df['serieNames'], categories=all_categories).codes
+            test_df['serieNames'] = pd.Categorical(test_df['serieNames'], categories=all_categories).codes
+            val_df['serieNames'] = pd.Categorical(val_df['serieNames'], categories=all_categories).codes
+
             # #extra step for less than ziro values
             # train_df.loc[train_df[TARGET_COLUMN] <= 10, TARGET_COLUMN] = np.nan
 
             # train_df[TARGET_COLUMN] = train_df[TARGET_COLUMN].fillna(method='ffill').fillna(method='bfill')
-
-
-
-            schema = read_yaml_file(SCHEMA_FILE_PATH)
-            numerical_columns = [
-                column["name"]
-                for column in schema["columns"]
-                if column["type"] in ["INTEGER", "FLOAT"]
-            ]
 
 
             # Ensure the target column is removed from the final numerical_columns for transformation
@@ -169,8 +176,6 @@ class DataTransformation:
             transformed_input_test_feature = preprocessor_object.transform(input_feature_test_df)
             transformed_input_val_feature = preprocessor_object.transform(input_feature_val_df)
 
-            
-           
            
 
             # Extract target feature DataFrames
@@ -178,8 +183,7 @@ class DataTransformation:
             target_feature_test_df = test_df[TARGET_COLUMN]
             target_feature_val_df = val_df[TARGET_COLUMN]
 
-           
-
+            
             # Combine the features and target columns into arrays
             train_arr = np.c_[transformed_input_train_feature, target_feature_train_df.to_numpy()]
             test_arr = np.c_[transformed_input_test_feature, target_feature_test_df.to_numpy()]

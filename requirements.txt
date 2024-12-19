@@ -12,5 +12,5 @@ dagshub
 mlflow
 fastapi
 uvicorn
-sktime
 statsmodels
+python-multipart

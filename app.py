@@ -4,9 +4,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from TSForecasting.exception.exception import TSForecastingException
 from TSForecasting.logging.logger import logging
-from TSForecasting.pipeline.aws_training_pipeline import TrainingPipeline
+from TSForecasting.pipeline.training_pipline import TrainingPipeline
 from TSForecasting.utils.main_utils.utils import load_object
-from TSForecasting.utils.ml_utils.model.estimator import TransactionMonitoring
+from TSForecasting.utils.ml_utils.model.estimator import TSForecastingEstimator
 from TSForecasting.constant.training_testing_pipeline import DATA_INGESTION_COLLECTION_NAME
 from TSForecasting.constant.training_testing_pipeline import DATA_INGESTION_DATABASE_NAME, DATA_INGESTION_TABLE_NAME
 from fastapi.templating import Jinja2Templates
@@ -60,9 +60,14 @@ app.add_middleware(
 
 templates = Jinja2Templates(directory="./templates")
 
-@app.get("/", tags=["authentication"])
-async def index():
-    return RedirectResponse(url="/docs")
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to mehran1414/cl_project"}
+
 
 @app.get("/train")
 async def train_route():
@@ -80,7 +85,7 @@ async def predict_route(request: Request,file: UploadFile = File(...)):
         #print(df)
         preprocesor=load_object("final_model/preprocessor.pkl")
         final_model=load_object("final_model/model.pkl")
-        network_model = TransactionMonitoring(preprocessor=preprocesor,model=final_model)
+        network_model = TSForecastingEstimator(preprocessor=preprocesor,model=final_model)
         print(df.iloc[0])
         y_pred = network_model.predict(df)
         print(y_pred)
@@ -91,7 +96,7 @@ async def predict_route(request: Request,file: UploadFile = File(...)):
         df.to_csv('app_output/output.csv')
         table_html = df.to_html(classes='table table-striped')
         #print(table_html)
-        return templates.TemplateResponse("table.html", {"request": request, "table": table_html})
+        return templates.TemplateResponse("index.html", {"request": request, "table": table_html})
         
     except Exception as e:
             raise TSForecastingException(e,sys)

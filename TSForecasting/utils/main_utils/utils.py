@@ -9,9 +9,9 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GridSearchCV
 from datetime import timedelta
 from TSForecasting.constant.training_testing_pipeline import DATA_LAG, DATA_WINDOW, TARGET_COLUMN, DATA_GROUPING_COLUMN
-from lightgbm import LGBMRegressor
 import lightgbm as lgb
-
+import xgboost as xgb
+import catboost as cb
 
 def read_yaml_file(file_path: str) -> dict:
     try:
@@ -86,64 +86,54 @@ def evaluate_models(X_train, y_train, X_test, y_test, models, param):
         for i in range(len(list(models))):
             model_name = list(models.keys())[i]
             model = list(models.values())[i]
-            params = param[model_name]
+            params=param[list(models.keys())[i]]
 
-            if model_name == "LightGBM":
-                params = {
-                    'learning_rate': [0.01, 0.05, 0.1],
-                    'n_estimators': [50, 100],
-                    'num_leaves': [31, 50],
-                    'feature_fraction': [0.8, 0.9],
-                    'bagging_fraction': [0.8, 1.0],
-                    
-                }
-                # Special handling for LightGBM with CV
-                lgbm_cv_model = LGBMRegressor(objective="regression", boosting_type="gbdt", metric="rmse")
+            
+            # Use GridSearchCV to find the best parameters
+            grid_search = GridSearchCV(estimator=model, param_grid=params, cv=3, scoring="neg_mean_squared_error",verbose=1)
+            grid_search.fit(X_train, y_train)
 
-                # Use GridSearchCV to find the best parameters
-                grid_search = GridSearchCV(estimator=lgbm_cv_model, param_grid=params, cv=3, scoring="neg_mean_squared_error")
-                grid_search.fit(X_train, y_train)
+            # Get the best parameters
+            best_params = grid_search.best_params_
+            print(f"Best parameters for LightGBM: {best_params}")
 
-                # Get the best parameters
-                best_params = grid_search.best_params_
-                print(f"Best parameters for LightGBM: {best_params}")
+            # Train the final LightGBM model using the best parameters
 
-                # Train the final LightGBM model using the best parameters
-                final_model = LGBMRegressor(
-                    objective="regression",
-                    boosting_type="gbdt",
-                    metric="rmse",
-                    **best_params
-                )
-                final_model.fit(X_train, y_train)
+            if model_name == 'LightGBM':
+                final_model = lgb.LGBMRegressor(**best_params)
+            elif model_name == 'XGBoost':
+                final_model = xgb.XGBRegressor(**best_params)
+            elif model_name == 'CatBoost':
+                final_model = cb.CatBoostRegressor(**best_params)
 
-                # Predictions
-                y_train_pred = final_model.predict(X_train)
-                y_test_pred = final_model.predict(X_test)
+            final_model.fit(X_train, y_train)
+
+            # Predictions
+            y_train_pred = final_model.predict(X_train)
+            y_test_pred = final_model.predict(X_test)
 
 
-                # Calculate RMSE
-                train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
-                test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
+            # Calculate RMSE
+            train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
+            test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
 
-                report[model_name] = test_model_score
-                save_object("final_model/lightgbm.pkl",final_model)
-            else:
-                # General model handling
-                gs = GridSearchCV(model, params, cv=3)
-                gs.fit(X_train, y_train)
+            report[list(models.keys())[i]] = test_model_score
+            # else:
+            #     # General model handling
+            #     gs = GridSearchCV(model, params, cv=3)
+            #     gs.fit(X_train, y_train)
 
-                model.set_params(**gs.best_params_)
-                model.fit(X_train, y_train)
+            #     model.set_params(**gs.best_params_)
+            #     model.fit(X_train, y_train)
 
-                y_train_pred = model.predict(X_train)
-                y_test_pred = model.predict(X_test)
+            #     y_train_pred = model.predict(X_train)
+            #     y_test_pred = model.predict(X_test)
 
-                train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
-                test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
+            #     train_model_score = np.sqrt(mean_squared_error(y_train, y_train_pred))
+            #     test_model_score = np.sqrt(mean_squared_error(y_test, y_test_pred))
 
-                report[model_name] = test_model_score
-
+            #     report[model_name] = test_model_score
+        print("Evaluation completed")
         return report
 
     except Exception as e:

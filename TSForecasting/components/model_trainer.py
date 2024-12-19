@@ -15,9 +15,9 @@ from sklearn.ensemble import (
     GradientBoostingRegressor,
     RandomForestRegressor,
 )
-import lightgbm as LGBMRegressor
+import lightgbm as lgb
+import xgboost as xgb
 import catboost as cb
-
 
 import mlflow
 from urllib.parse import urlparse
@@ -82,45 +82,39 @@ class ModelTrainer:
 
 
         
-    def train_model(self,X_train,y_train, x_val, y_val, x_test,y_test):
+    def train_model(self,X_train,y_train, x_val, y_val):
         models = {
-                "Random Forest": RandomForestRegressor(verbose=1),
-                "Gradient Boosting": GradientBoostingRegressor(verbose=1),
-                "AdaBoost": AdaBoostRegressor(),
-                "LightGBM": LGBMRegressor
+
+                "XGBoost":  xgb.XGBRegressor(objective='reg:squarederror'),
+                "CatBoost": cb.CatBoostRegressor(verbose=0),
+                "LightGBM": lgb.LGBMRegressor()
             }
         params = {
-               
-                "Random Forest": {
-                    'n_estimators': [50, 100],  # Fewer trees for faster execution
-                    'max_depth': [5, 10],  # Balanced complexity
-                    'min_samples_split': [2, 5],
-                    'min_samples_leaf': [1, 2],
-                    'max_features': ['sqrt', None],  # Subset of features per split
+                        
+                "XGBoost": {
+                    'learning_rate': [0.05, 0.1],  # Learning rate
+                    'max_depth': [6, 9],  # Tree depth
+                    'n_estimators': [10, 50],  # Number of boosting rounds
+                    'subsample': [0.8, 1.0],  # Fraction of data used for training
+                    'alpha': [0.5, 0.7],  # L1 regularization
                 },
-                "Gradient Boosting": {
-                    'n_estimators': [50, 100],  # Moderate number of estimators for speed
-                    'learning_rate': [0.05, 0.1],  # Balanced learning rates
-                    'max_depth': [3, 5],  # Shallow trees to avoid overfitting
-                    'subsample': [0.7, 0.9],  # Introduce randomness to improve generalization
-                    'min_samples_split': [5, 10],
-                    'min_samples_leaf': [2, 5],
+                "CatBoost": {
+                    'learning_rate': [0.05, 0.1],  # Learning rate
+                    'depth': [6, 8],  # Tree depth
+                    'iterations': [10, 50],  # Number of iterations
                 },
-                "AdaBoost": {
-                    'n_estimators': [50, 100],
-                    'learning_rate': [0.05, 0.1],
-                    'loss': ['linear', 'square', 'exponential'],  # Loss functions for regression
-                },
-                "LightGBM":  
-                    {
-                        'learning_rate': [0.01, 0.05, 0.1],
-                        'n_estimators': [50, 100],
-                        'num_leaves': [31, 50],
-                        'feature_fraction': [0.8, 0.9],
-                        'bagging_fraction': [0.8, 1.0]
-                    }
-                
+                "LightGBM": {
+                    'learning_rate': [0.05, 0.1],  # Learning rate
+                    'min_data_in_leaf': [10, 20],  # Minimum samples in a leaf node
+                    'num_leaves': [5, 7],  # Number of leaves
+                    'max_depth': [6, 12],  # Maximum tree depth
+                    'n_estimators': [10, 50],  # Number of boosting rounds
+                    'lambda_l1': [0.5, 0.7],  # L1 regularization
+                }
         }
+
+                
+
 
         model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_val,y_test=y_val,
                                           models=models,param=params)
@@ -137,16 +131,11 @@ class ModelTrainer:
 
         best_model = models[best_model_name]
 
-        if best_model_name == "LightGBM":
-            best_model = load_object("final_model/lightgbm.pkl")
-            y_train_pred=best_model.predict(X_train)
-            save_object("final_model/model.pkl",best_model)
+        best_model.fit(X_train, y_train)
 
 
-        else:
-
-            y_train_pred=best_model.predict(X_train)
-
+        y_train_pred=best_model.predict(X_train)
+            
         regression_train_metric=get_regression_score(y_true=y_train,y_pred=y_train_pred)
         
         ## Track the experiements with mlflow
@@ -248,10 +237,10 @@ class ModelTrainer:
 
 
             try:
-                model_trainer_artifact = self.train_model(x_train, y_train, x_val, y_val, x_test, y_test)
+                model_trainer_artifact = self.train_model(x_train, y_train, x_val, y_val)
                 print("train_model executed successfully")
                 print("Now we go to save the test file preds")
-                self.prepare_the_test_csv_file(x_test, y_test)
+                #self.prepare_the_test_csv_file(x_test, y_test)
                 print("Test file preds saved successfully")
             except Exception as e:
                 print(f"Exception in train_model: {e}")
